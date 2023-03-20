@@ -7,6 +7,7 @@ import csv
 from os import listdir, sep, path
 import re
 
+
 ns = {'':'http://www.loc.gov/mods/v3'}
 mods_to_vocab = {
     'corporate': 'corporate_body',
@@ -22,7 +23,7 @@ class XmlSet(object):
         self.docs.append(doc)
         self.headers.update(doc.keys())
     def print(self,fp):
-        ## Write out to CSV file
+        ## Write out to  CSV file
         tmp = list(self.headers)
         tmp.sort()
         writer = csv.DictWriter(fp, fieldnames=tmp)
@@ -41,28 +42,7 @@ class XmlSet(object):
     def oversize(self, key):
         return [x[key] for x in self.docs if len(x[key]) > 255]
         
-################################### MODS SECTION PARSING ##########################################
-
-def parseTitleInfo(root):
-    titles = root.findall('titleInfo', ns)
-    data = {'title': '', 'field_alt_title': [], 'field_full_title': ''}
-    for title in titles:
-        # Titles without types are main. However they're also limited in size.
-        if 'type' not in title.attrib:
-            data['title'] = concat_title_parts(title)
-            data['field_full_title'] = data['title']
-            if len(data['title']) > 255 :
-                data['title'] = data['title'][:254]
-        elif title.get('type') == 'alternative':
-            data['field_alt_title'].append(concat_title_parts(title))
-        # For the two books with uniform titles, they're being treated as alt titles.
-        elif title.get('type') == 'uniform':
-            data['field_alt_title'].append(concat_title_parts(title))
-        else:
-            print("ERROR: title type {}".format(title.get('type')))
-    data['field_alt_title'] = '|'.join(data['field_alt_title'])
-    return data
-
+################################### MODS SECTION PARSING ###################################
 def concat_title_parts(titleInfo):
     text = ''
     #FIXME rewrite as foreach?
@@ -71,11 +51,17 @@ def concat_title_parts(titleInfo):
         text += non_sort.text
         if non_sort.text[-1] != ' ':
             text += ' '
-    text += titleInfo.find('title', ns).text
+
+    title = titleInfo.find('title', ns)
+    if title is not None and title.text is not None:
+        text += title.text
+        text += ' : '
+               
     subtitle = titleInfo.find('subTitle', ns)
     if subtitle is not None and subtitle.text is not None:
-        text += ' : '
+        # text += ' : '
         text += subtitle.text
+
     partnumber = titleInfo.find('partNumber', ns)
     if partnumber is not None and partnumber.text is not None:
         text += '. '
@@ -85,6 +71,35 @@ def concat_title_parts(titleInfo):
         text += '. '
         text += partname.text
     return text
+
+def parseTitleInfo(root):
+    titles = root.findall('titleInfo', ns)
+    data = {'title': '', 'field_alt_title': [], 'field_full_title': ''}
+    for title in titles:
+        # Titles without types are main. However they're also limited in size.
+        if 'type' not in title.attrib:
+            data['title'] = concat_title_parts(title).split(" : ")[0]
+            #data['title'] = concat_title_parts(title)
+            data['field_full_title'] = data['title']
+            if len(data['title']) > 255 :
+                data['title'] = data['title'][:254]
+                
+        elif title.get('type') == 'alternative':
+            data['field_alt_title'].append(concat_title_parts(title))
+
+        elif title.get('type') == 'translated':
+            data['field_alt_title'].append(concat_title_parts(title))
+            
+        elif title.get('type') == 'abbreviated':
+            data['field_alt_title'].append(concat_title_parts(title))
+            
+        elif title.get('type') == 'uniform':
+            data['field_alt_title'].append(concat_title_parts(title))
+        else:
+            print("ERROR: title type {}".format(title.get('type')))
+    data['field_alt_title'] = '|'.join(data['field_alt_title'])
+    return data
+
 
 def parseNameInfo(root):
     names = root.findall('name', ns)
@@ -134,7 +149,7 @@ def parseNameInfo(root):
                 name_text += ', '
             elif namePart.get('type') is not None:
                 print("Unhanded namePart type {}".format(namePart.get('type')))
-            name_text += namePart.text
+            # name_text += namePart.text
         
         name_data.append(role_text + ':' + vocab + ':' + name_text)
     
@@ -164,15 +179,18 @@ def parseTypeOfResource(root):
         
 def parseGenre(root):
     xml_genres = root.findall('genre',ns)
+    print("************************************************************************************************************************* {}".format(xml_genres))
     genres = []
     for genre in xml_genres:
-        tmp = genre.text.lower()
-        genres.append(tmp)
+        if genre is not None and genre.text is not None:
+            genretxt = genre.text
+            tmp = genretxt.lower()
+            genres.append(tmp)
     return {'field_genre': '|'.join(genres)}
     
 def parseOriginInfo(root):
-    data = {'field_place_published': [],
-            'field_place_published_country':'', # assuming single valued
+    data = {'field_place_of_publication': [],
+            'field_place_of_publication_country':'', # assuming single valued
             'field_linked_agent': [],
             'field_edtf_date_issued': [],
             'field_edtf_date_created': [],
@@ -191,14 +209,14 @@ def parseOriginInfo(root):
                     handled = False
                     for place_subelem in subelem:
                         # Test for authority
-                        if place_subelem.get('authority')  in ['marccountry', 'marc']:
+                        if place_subelem.get('authority') in ['marccountry', 'marc']:
                             # This represents a "code" version of the place.
-                            data['field_place_published_country'] = place_subelem.text
+                            data['field_place_of_publication_country'] = place_subelem.text
                             handled = True
                         # Some full place elements wrongly use a <text> tag.
                         elif place_subelem.get('type') == 'text' or place_subelem.tag == '{http://www.loc.gov/mods/v3}text':
                             # this is the longer one
-                            data['field_place_published'].append(place_subelem.text)
+                            data['field_place_of_publication'].append(place_subelem.text)
                             handled = True
                     if not handled:
                         # All islandlives place are either marc auth or type text.
@@ -241,7 +259,7 @@ def parseOriginInfo(root):
                 data['field_edtf_date_issued'].remove(issuedDate)
     
     # Collapse multi-valued fields
-    data['field_place_published'] = '|'.join(data['field_place_published'])
+    data['field_place_of_publication'] = '|'.join(data['field_place_of_publication'])
     data['field_linked_agent'] = '|'.join(data['field_linked_agent'])
     data['field_edtf_date_issued'] = '|'.join(data['field_edtf_date_issued'])
     data['field_edtf_date_created'] = '|'.join(data['field_edtf_date_created'])
@@ -499,9 +517,9 @@ def parse_mods(filename):
     xml_data.update(parseTypeOfResource(root))
     # Parse genre
     xml_data.update(parseGenre(root))
-    # Parse originInfo
+    #Parse originInfo
     oiData = parseOriginInfo(root)
-    # Combine publisher with rest of names
+    #Combine publisher with rest of names
     if oiData['field_linked_agent']:
         if xml_data['field_linked_agent']:
             oiData['field_linked_agent'] = '|'.join([xml_data['field_linked_agent'],oiData['field_linked_agent']])
@@ -546,14 +564,13 @@ def parse_mods(filename):
     
 def main():
     data = XmlSet()
-    directory = '/Users/rlefaive/Documents/Projects/2020-ilives-metadata/ilives_mods'
+    directory = 'Test'
     data.input_directory(directory)
     #FIXME OUTPUT SHORTCUT
     #print("large titles {}".format('.'.join(data.oversize('title'))))
     # print("length alt title: {}".format(data.maxlen('field_alt_title')))
-    output_filename = 'output.csv'
-    with open(output_filename, 'w') as csv:
+    output_filename = 'MODS_default_form_full_record.csv'
+    with open(output_filename, 'w', encoding="utf-8") as csv:
         data.print(csv)
-    
-if __name__ == '__main__':
-    main()
+main()
+ 
