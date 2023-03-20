@@ -23,7 +23,7 @@ class XmlSet(object):
         self.docs.append(doc)
         self.headers.update(doc.keys())
     def print(self,fp):
-        ## Write out to  CSV file
+        ## Write out to CSV file
         tmp = list(self.headers)
         tmp.sort()
         writer = csv.DictWriter(fp, fieldnames=tmp)
