@@ -43,6 +43,7 @@ class XmlSet(object):
         return [x[key] for x in self.docs if len(x[key]) > 255]
         
 ################################### MODS SECTION PARSING ###################################
+## Milad notes: changes to the way it writes text to fix the errors:
 def concat_title_parts(titleInfo):
     text = ''
     #FIXME rewrite as foreach?
@@ -100,21 +101,21 @@ def parseTitleInfo(root):
     data['field_alt_title'] = '|'.join(data['field_alt_title'])
     return data
 
-
+#Milad Notes: Fixing name.text:
+#we do not have any functionality to get the namePart.text, roleTerm.text and role.text
 def parseNameInfo(root):
     names = root.findall('name', ns)
     name_data = []
     for name in names:
-        
         ## Get name type to determine vocab.
         vocab = 'person'
         if name.get('type') is None:
             # All ilives names have type; notify if otherwise.
             print("ERROR: no type for name {}".format(name.text))
-        # else:
-        #   nameType = name.get('type')
-        #   if nameType in mods_to_vocab.keys():
-        #     vocab = mods_to_vocab[nameType]
+        else:
+          nameType = name.get('type')
+        if nameType in mods_to_vocab.keys():
+            vocab = mods_to_vocab[nameType]
         elif name.get('type') == 'personal':
             vocab = 'person'
         elif name.get('type') == 'corporate':
@@ -149,7 +150,7 @@ def parseNameInfo(root):
                 name_text += ', '
             elif namePart.get('type') is not None:
                 print("Unhanded namePart type {}".format(namePart.get('type')))
-            # name_text += namePart.text
+            name_text += namePart.text
         
         name_data.append(role_text + ':' + vocab + ':' + name_text)
     
@@ -187,20 +188,21 @@ def parseGenre(root):
             tmp = genretxt.lower()
             genres.append(tmp)
     return {'field_genre': '|'.join(genres)}
-    
+### Milad Notes: adding fields in Original info:
 def parseOriginInfo(root):
     data = {'field_place_of_publication': [],
-            'field_place_of_publication_country':'', # assuming single valued
+            #'field_place_of_publication_country':'', # assuming single valued                                                                 #No need for LDL#
             'field_linked_agent': [],
             'field_edtf_date_issued': [],
             'field_edtf_date_created': [],
             'field_date_captured': [] ,
-            'field_mode_of_issuance': '',   # assuming single valued
-            'field_edition': '',            # assuming single valued
-            'field_copyright_date':'',}    # assuming single valued
+            #'field_mode_of_issuance': '',   # assuming single valued                                                                          #No need for LDL#
+            #'field_edition': '',            # assuming single valued                                                                          #No need for LDL#
+            #'field_copyright_date':''                                                                                                         #No need for LDL#
+            }    # assuming single valued
     xml_originInfo = root.findall('originInfo',ns)
     for oi in xml_originInfo:
-        if oi.get('type') is not None:
+        if oi.get('type') is None:
             # No ilives have types on originInfo.
             print("originInfo has type {}".format(oi.get('type')))
         else:
@@ -233,7 +235,7 @@ def parseOriginInfo(root):
                     data['field_edtf_date_created'].append(subelem.text)
                 elif subelem.tag == '{http://www.loc.gov/mods/v3}dateCaptured':
                     data['field_date_captured'].append(subelem.text)
-                elif subelem.tag == '{http://www.loc.gov/mods/v3}copyrightDate':
+                elif subelem.tag == '{http://www.loc.gov/mods/v3}copyrightDate':                                                               #No need for LDL#
                     data['field_copyright_date'] = subelem.text
                 elif subelem.tag == '{http://www.loc.gov/mods/v3}issuance':
                     data['field_mode_of_issuance'] = subelem.text
@@ -255,7 +257,7 @@ def parseOriginInfo(root):
             if data['field_copyright_date']:
                 print("MULTIPLE COPYRIGHT DATES: {},{}".format(data['field_copyright_date'],issuedDate))
             else:
-                data['field_copyright_date'] = issuedDate.replace('c','')
+                data['field_copyright_date'] = issuedDate.replace('c','')                                                                      #No need for LDL#
                 data['field_edtf_date_issued'].remove(issuedDate)
     
     # Collapse multi-valued fields
@@ -282,33 +284,54 @@ def parseLanguage(root):
                 print("unhandled tag: {}, text: {}, attrib: {}".format(lang_term.tag, lang_term.text, lang_term.attrib))
     return {key: '|'.join(value) for key, value in data.items()}
 
+
+############## Milad Note: note,internetMediaType,digitalOrigin data added ##############
 def parsePhysicalDescription(root):
     data = {
         'field_physical_form' : '',
-        'field_extent' : ''
+        'field_extent' : '',
+        'field_physical_description_note': '', 
+        'Field_internet_Media_Type': '',
+        'digital_Origin': ''
     }
     xml_physDesc = root.findall('physicalDescription',ns)
     for pd in xml_physDesc:
         for elem in pd:
-            if elem.tag == '{http://www.loc.gov/mods/v3}form':
-                data['field_physical_form'] = elem.text
-            elif elem.tag == '{http://www.loc.gov/mods/v3}extent':
+            if elem.tag == 'note':
+                data['field_physical_description_note'] = elem.text
+            elif elem.tag == 'extent':
                 data['field_extent'] = elem.text
+            elif elem.tag == 'internetMediaType':
+                data['Field_internet_Media_Type'] = elem.text
+            elif elem.tag == 'digitalOrigin':
+                data['digital_Origin'] = elem.text
+            elif elem.tag == 'form':
+                data['field_physical_form'] = elem.text
             else:
                 print("Unhandled element: tag: [{}], text: [{}], attrib: {}".format(elem.tag, elem.text, elem.attrib))
     return data
-
+### Milad Note: separated the abstracts into two fields according to the child tag's attribute
 def parseAbstract(root):
-    data = []
+    data = {
+        'field_harmful_content_notice': [],
+        'field_abstract_description': []
+        # 'abstract': [] #In case if we needed to add all the abstact texts into one field
+    }
     xml_abstract = root.findall('abstract',ns)
     for abstract in xml_abstract:
         if abstract.text is not None:
-            if abstract.get('type') is not None:
-                data.append(': '.join([abstract.get('type'), abstract.text]))
-                print("abstract type: [{}]".format(abstract.get('type')))
-            else:
-                data.append(abstract.text)
-    return {'field_abstract': '|'.join(data) }
+            if abstract.get('displayLabel') == 'Harmful Content Notice':
+                data['field_harmful_content_notice'].append(abstract.text)
+            if abstract.get('displayLabel') == 'Description':
+                data['field_abstract_description'].append(abstract.text)
+            # if abstract.get('type') is not None:
+            #     data['abstract'].append(': '.join([abstract.get('type'), abstract.text]))
+            #     print("abstract type: [{}]".format(abstract.get('type')))
+
+            # else:
+            #     data['abstract'].append(abstract.text)
+    # return {'field_abstract': '|'.join(data) }
+    return {key : '|'.join(value) for key, value in data.items()}
 
 def parseTableOfContents(root):
     data = []
