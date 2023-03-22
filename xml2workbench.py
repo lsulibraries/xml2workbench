@@ -418,6 +418,7 @@ def parseSubject(root):
                     
     return {key : '|'.join(value) for key, value in data.items()}
 
+################################### Milad note: def parseClassification(root) Removed No need for LDL  ###################################
 def parseClassification(root):
     data = {
         'field_lcc_classification': '',
@@ -435,6 +436,35 @@ def parseClassification(root):
             data['field_classification'] = classification.text
             print("ELEMENT text: [{}]".format('; '.join(classification.itertext())))
     return data
+
+####################### Milad note: Add pars location logic ########################################
+def parsLocation(root):
+    data = {"field_physical_location": [],
+            "field_institution_web_site": [], 
+            "field_oclc_symbol": [],
+            "field_sublocation": [],
+            "field_shelf_location": []
+            }
+    for location in root.findall('location', ns):
+        print("Location ---------------------***********************")
+        for locs in location.iter():
+            if 'physicalLocation' in locs.tag :
+                if locs.get("displayLabel") == "Physical Location":
+                    data["field_physical_location"].append(locs.text) 
+                if locs.get("displayLabel") == "OCLC Member Symbol":
+                    data["field_institution_web_site"].append(locs.text)
+            if 'subLocation' in locs.tag:
+                data["field_sublocation"].append(locs.text)
+            if 'shelfLocator' in locs.tag:
+                data["field_shelf_location"].append(locs.text)
+    
+    print('test Texts')
+    print("field physical location: {}".format(data["field_physical_location"]))
+    print("field institution web site: {}".format(data["field_institution_web_site"]))
+    print("field sublocation: {}".format(data["field_sublocation"]))
+    print("field shelf location: {}".format(data["field_shelf_location"]))
+    
+    return {key : '|'.join(value) for key, value in data.items()}
 
 def parseRelatedItem(root):
     data = {
