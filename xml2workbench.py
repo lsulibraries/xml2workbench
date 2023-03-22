@@ -438,23 +438,67 @@ def parseClassification(root):
 
 def parseRelatedItem(root):
     data = {
-        'field_is_succeeded_by': [], # TODO Make fields
-        'field_is_preceded_by': [],  # TODO Make fields
-        'field_note' : []
+        #Milad note: field_is_succeeded_by,field_is_preceded_by are not needed to be parsed
+        #'field_is_succeeded_by': [],
+        #'field_is_preceded_by': [],
+        'field_note' : [],
+        'field_digital_collection': [],
+        'field_digital_collection_url': [],
+        'field_repository_collection': [],
+        'field_repository_collection_guide': [],
+        'field_parent_Item_Title': []
     }
+
     for relatedItem in root.findall('relatedItem',ns):
         if relatedItem.get('type') == "original":
             # From a glance, these are all in note fields
             continue
-        # Preceding and succeeding get their own fields
+        # Milad note: Preceding and succeeding are not needed in LDL, Fileds are commented out
         elif relatedItem.get('type') == "preceding":
             data['field_is_preceded_by'].append(' '.join(trimXMLlist(relatedItem.itertext())))
         elif relatedItem.get('type') == 'succeeding':
             data['field_is_succeeded_by'].append(' '.join(trimXMLlist(relatedItem.itertext())))
-        #
-        elif relatedItem.get('type') in ['series', 'host'] :
+        elif relatedItem.get('type') == 'series':
             # Add a note
             data['field_note'].append(relatedItem.get('type') + ': ' + ' '.join(trimXMLlist(relatedItem.itertext())))
+            
+    ######## Milad note: New logics to add a few fields by parsing into tags, child tags, get the text eccouridng to the tag's attribute ########
+        elif relatedItem.get('type') == 'host':
+            print("**************************************** Adding relatedItem tags with host attribute *****************************************************")
+            for elems in relatedItem.iter():
+                if "titleInfo" in elems.tag:
+                    if elems.get('displayLabel') == 'Parent Item Title':
+                        for elem in elems:
+                            data['field_parent_Item_Title'].append(elem.text)
+                            
+                    if elems.get('displayLabel') == 'Digital Collection':
+                        for elem in elems:
+                            data['field_digital_collection'].append(elem.text)
+
+                    if elems.get('displayLabel') == 'Repository Collection':
+                        for elem in elems:
+                            data['field_repository_collection'].append(elem.text)
+                            
+                if "location" in elems.tag:
+                    for elem in elems:
+                        if elem.get('displayLabel') == 'Relation':
+                                data['field_digital_collection_url'].append(elem.text)
+                                
+                        if elem.get('displayLabel') == 'Repository Collection Guide':
+                            for elem in elems:
+                                data['field_repository_collection_guide'].append(elem.text)
+                                
+            print("New Fields:***") 
+            print("field digital collection: {}".format(data["field_digital_collection"]))
+            print("MyField parent item title: {}".format(data["field_parent_Item_Title"]))
+            print("field repository collection: {}".format(data["field_repository_collection"]))
+            print("field digital collection URL: {}".format(data["field_digital_collection_url"]))
+            print("field repository collection guide: {}".format(data["field_repository_collection_guide"]))
+
+        elif relatedItem.get('type') == 'series' :
+            # Add a note
+            data['field_note'].append(relatedItem.get('type') + ': ' + ' '.join(trimXMLlist(relatedItem.itertext())))
+                
         elif relatedItem.get('type') in ['otherVersion', 'constituent'] :
             # Only instance was a self-reference. ignore.
             continue
