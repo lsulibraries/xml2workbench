@@ -349,16 +349,33 @@ def parseTargetAudience(root):
             print("FOUND: TARGET AUDIENCE {}".format(ta.text))
 
 def parseNote(root):
-    data = []
+    data = {
+        'field_note' : [],
+        'field_source_note': [],
+        'field_preferred_citation' : [],
+        'field_harmful_content_notice': [],
+        'fieldNoteNew': []
+    }
+        
     xml_note = root.findall('note',ns)
     for note in xml_note:
-        if note.text is not None:
-            if note.get('type') is not None:
-                data.append(': '.join([note.get('type'), note.text]))
-                #print("note type: [{}]".format(note.get('type')))
+        if note.text is not None:  
+            if note.get('type') == 'ownership':
+                data['field_source_note'].append(note.text)
+            elif note.get('type') == 'preferred citation':
+                data['field_preferred_citation'].append(note.text)
+            if note.get('type') == 'content':
+                if note.get('displayLabel') == 'Harmful Content Notice':
+                    data['field_harmful_content_notice'].append(note.text)
+                if note.get('displayLabel') == 'Note':
+                    data['fieldNoteNew'].append(note.text)
+            # elif note.text is not None:
             else:
-                data.append(note.text)
-    return {'field_note': '|'.join(data) }
+                # data['field_note'] == ': '.join([note.get('type'), note.text, '|'])
+                data['field_note'].append('{}:{}'.format(note.get('type'), note.text))
+
+        # return {'field_note': '|'.join(data) }
+    return {key : '|'.join(value) for key, value in data.items()}
 
 def trimXML(text):
     if text is None:
@@ -436,7 +453,6 @@ def parseClassification(root):
             data['field_classification'] = classification.text
             print("ELEMENT text: [{}]".format('; '.join(classification.itertext())))
     return data
-
 ####################### Milad note: Add pars location logic ########################################
 def parsLocation(root):
     data = {"field_physical_location": [],
@@ -465,6 +481,7 @@ def parsLocation(root):
     print("field shelf location: {}".format(data["field_shelf_location"]))
     
     return {key : '|'.join(value) for key, value in data.items()}
+
 
 def parseRelatedItem(root):
     data = {
@@ -543,9 +560,10 @@ def parseRelatedItem(root):
 def parseIdentifier(root):
     data = {
         'field_identifier': [],
-        'field_local_identifier' : [],
-        'field_isbn': [],
-        'field_oclc_number': []
+        'field_local_identifier' : []
+        #Milad note: field_isbn,field_oclc_number are not needed to be parsed
+        #'field_isbn': [],           
+        #'field_oclc_number': [] 
     }
     for identifier in root.findall('identifier',ns):
         id_type = identifier.get('type')
@@ -556,8 +574,8 @@ def parseIdentifier(root):
         elif id_type == 'uri':
             # Decision to filter these out as they are broken links
             continue
-        if id_type == 'isbn':
-            data['field_isbn'].append(identifier.text)
+        # if id_type == 'isbn':
+        #     data['field_isbn'].append(identifier.text)
         elif id_type == 'oclc':
             data['field_oclc_number'].append(identifier.text)
         elif id_type == 'local':
@@ -567,33 +585,69 @@ def parseIdentifier(root):
             data['field_identifier'].append(identifier.text)
     return {key : '|'.join(value) for key, value in data.items()}
 
+#### Milad note: 5 fields added insteaed of field_rights____ Codes for field rights commented out ####
 def parseAccessCondition(root):
     data = {
-        'field_rights': []
+        # 'field_rights': [],
+        'field_rights_statement': [],
+        'field_rights_information': [],
+        'field_access_restrictions': [],
+        'field_contact_information': [],
+        'field_rights_statement_uri': []
     }
     for accessCondition in root.findall('accessCondition',ns):
+        attributes = accessCondition.attrib
+        print("This is accessCondition Attributes .... {}".format(attributes))
+        
         id_type = accessCondition.get('type')
-        id_value = trimXML(accessCondition.text)
-        if id_value is None or id_value == '':
-            # There is no value here to process.
-            continue
-        if id_type:
-            data['field_rights'].append(id_type + ': ' + id_value)
-        else:
-            data['field_rights'].append(id_value)
+        disp_label = accessCondition.get('displayLabel')
+        
+        # add field_rights_statement
+        if id_type == "use and reproduction" and disp_label == "Rights Statement": 
+            data["field_rights_statement"].append(accessCondition.text)
+            
+        # add field_rights_statement_uri: xlink:href is not a attribute
+        #A) use the right attribute name by using root.get('attributeName')
+        if disp_label == "xlink:href": 
+            data["field_rights_statement_uri"].append(accessCondition.get('xlink:href'))
+        #B) use attribute name by getting root.attrib in a dictionary, Output be like: {'type': 'use and reproduction', 'displayLabel': 'Rights Information'} 
+        if attributes.keys() == 'xlink:href':
+            data["field_rights_statement_uri"].append(attributes.values())
+            
+        # add field_rights_information
+        if id_type == "use and reproduction" and disp_label == "Rights Information": 
+            data["field_rights_information"].append(accessCondition.text)
+        
+        # add field_contact_information
+        if id_type == "use and reproduction" and disp_label == "Contact Information": 
+            data["field_contact_information"].append(accessCondition.text)
+        
+        # add field_access_restrictions
+        if id_type == "use and reproduction" and disp_label == "Restrictions on Access": 
+            data["field_access_restrictions"].append(accessCondition.text)
+
     return {key : '|'.join(value) for key, value in data.items()}
 
+#### Milad Notes: Added Pars part ####
 def parsePart(root):
-    data = {}
+    data = {
+        'field_caption' : [],
+        'field_number' : [],
+        'field_title' : [],
+    }
     for part in root.findall('part',ns):
-        print("PART FOUND: [{}]".format(','.join(part.itertext())))
-    return data
+        for prt in part.iter():
+            if 'caption' in prt.tag :
+                data['field_caption'].append(prt.text)
+                
+            if 'number' in prt.tag :
+                data['field_number'].append(prt.text)
+                
+            if 'title' in prt.tag:
+                data['field_title'].append(prt.text)
+    return {key : '|'.join(value) for key, value in data.items()}
 
-def parseExtension(root):
-    data = {}
-    for part in root.findall('extension',ns):
-        print("EXT FOUND: [{}]".format(','.join(part.itertext())))
-    return data
+
 
 ################################### FILE HANDLING ##########################################
 
@@ -636,8 +690,8 @@ def parse_mods(filename):
     xml_data.update(parseNote(root))
     # Parse subjects
     xml_data.update(parseSubject(root))
-    # Parse classification
-    xml_data.update(parseClassification(root))
+    #Milad note: Ignore Parse classification
+    #xml_data.update(parseClassification(root))
     # Parse relatedItem
     relData = parseRelatedItem(root)
     # Append alterations to MODS note properly:
@@ -649,25 +703,25 @@ def parse_mods(filename):
     xml_data.update(relData)
     # Parse identifier data
     xml_data.update(parseIdentifier(root))
-    # Skip Location; no mapping.
+    # Parse Location
+    xml_data.update(parsLocation(root))
     # Parse AccessCondition
     xml_data.update(parseAccessCondition(root))
-    # Look for values in part - none found.
-    partData = parsePart(root)
+    #Parse Part
+    xml_data.update(parsePart(root))
     # Look for values in Extension
-    extData = parseExtension(root)
-    # Ignore recordInfo data - no mapping.
+    # extData = parseExtension(root) #### Milad Notes:no parseExtension ####
+    #Milad Note: no mapping for recordInfo data 
     return xml_data
     
 def main():
     data = XmlSet()
-    directory = 'Test'
+    directory = 'Data'
     data.input_directory(directory)
     #FIXME OUTPUT SHORTCUT
     #print("large titles {}".format('.'.join(data.oversize('title'))))
     # print("length alt title: {}".format(data.maxlen('field_alt_title')))
-    output_filename = 'MODS_default_form_full_record.csv'
+    output_filename = 'Test.csv'
     with open(output_filename, 'w', encoding="utf-8") as csv:
         data.print(csv)
 main()
- 
