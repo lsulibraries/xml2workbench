@@ -408,39 +408,12 @@ def parseSubject(root):
         for locIter in subject.iter(): #Milad note: text in <subject><geographic> should go here, regardless of @displayLabel--so @displayLabel can be disregarded 
             if 'geographic' in locIter.tag:
                 data['field_geographic_subject'].append(locIter.text)
-                
-        ######################## Milad Note: Guess we do not need ######################## 
-        # if subject.find('cartographics', ns):
-        #     subelem = subject.find('cartographics', ns).find('coordinates', ns)
-        #     if subelem.text and trimXML(subelem.text):
-        #         coordinates = True
-        #         if subject.find('hierarchicalGeographic',ns):
-        #             also_has_name = True
-        #             # print(data['field_geographic_subject'][-1])
-        #             # print(''.join(subelem.itertext()))
-        #         else:
-        #             print("Coordinates present, does not have name also.")
-        #             also_has_name = False
-        
-################################### Milad note: def parseClassification(root) Removed No need for LDL  ###################################
-# def parseClassification(root):
-#     data = {
-#         'field_lcc_classification': '',
-#         'field_classification' : '',
-#         'field_dewey_classification': ''
-        
-#     }
-#     for classification in root.findall('classification',ns):
-#         auth = classification.get('authority')
-#         if auth == 'ddc':
-#             data['field_dewey_classification'] = classification.text
-#         elif auth == 'lcc':
-#             data['field_lcc_classification'] = classification.text
-#         else:
-#             data['field_classification'] = classification.text
-#             print("ELEMENT text: [{}]".format('; '.join(classification.itertext())))
-#     return data
-####################### Milad note: Add pars location logic ########################################
+    for key, value in data.items():
+        if key != "field_subject":
+            return {key : '|'.join(value)}
+        else: 
+            return {key : '--'.join(value)}
+
 def parsLocation(root):
     data = {"field_physical_location": [],
             "field_institution_web_site": [], 
