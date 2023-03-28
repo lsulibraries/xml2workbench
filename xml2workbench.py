@@ -388,71 +388,58 @@ def trimXMLlist(list):
 def parseSubject(root):
     data = {
         'field_subject': [],
-        # 'field_subject_general': [],
-        'field_subjects_name': [],
-        # 'field_temporal_subject': [],
-        'field_geographic_subject': []
+        'field_geographic_subject': [],
+        'field_subjects_name': []
     }
     for subject in root.findall('subject',ns):
-        if subject.get('authority') == 'lcsh': # Then create a string out of this subject
-            components = []
-            type = subject[0].tag
-            for elem in subject:
-                elem.text = trimXML(elem.text)
-                if elem.text:
-                    components.append(elem.text)
-                elif elem.tag == '{http://www.loc.gov/mods/v3}name':
-                    nameValue = ' '.join([subelem.text for subelem in elem])
-                    components.append(nameValue)
-                        
-            subject_string = ' -- '.join(components)
-            if type == '{http://www.loc.gov/mods/v3}geographic':
-                data['field_geographic_subject'].append(subject_string)
-                # print('subject string: [{}]'.format(subject_string))
-            elif type == '{http://www.loc.gov/mods/v3}topic':
-                data['field_subject'].append('subject:' + subject_string)
-            elif type == '{http://www.loc.gov/mods/v3}name':
-                nametype = mods_to_vocab[subject[0].get('type')]
-                data['field_subjects_name'].append(nametype + ':' + subject_string)
-            else:
-                print("Unhandled subject string of type: {}".format(type))
-
-        hg = subject.find('hierarchicalGeographic',ns)
-        if hg:
-            data['field_geographic_subject'].append(' -- '.join([trimXML(x) for x in hg.itertext() if trimXML(x) != '']))
+        #####Milad Note: Changed the logic to write text in 'topic' like topic1.text--topc2.text (see the return at the end of this function)
+        if subject.get('authority') == 'LCSH': # Then create a string out of this subject
+            for sub in subject.iter():
+                if 'topic' in sub.tag and sub.text is not None:
+                    data['field_subject'].append(sub.text)
+                
+        ##### Milad Note: change the way and logic that data written to field_subjects_name 
+        if subject.get('displayLabel') == 'Name Subject':
+            for elems in subject.iter(): #use iter to output the certain tag or attrib
+                if 'name' in elems.tag:
+                    if 'namePart' in elems.tag:
+                        data['field_subjects_name'].append(elems.text)
+                            
+        for locIter in subject.iter(): #Milad note: text in <subject><geographic> should go here, regardless of @displayLabel--so @displayLabel can be disregarded 
+            if 'geographic' in locIter.tag:
+                data['field_geographic_subject'].append(locIter.text)
+                
+        ######################## Milad Note: Guess we do not need ######################## 
+        # if subject.find('cartographics', ns):
+        #     subelem = subject.find('cartographics', ns).find('coordinates', ns)
+        #     if subelem.text and trimXML(subelem.text):
+        #         coordinates = True
+        #         if subject.find('hierarchicalGeographic',ns):
+        #             also_has_name = True
+        #             # print(data['field_geographic_subject'][-1])
+        #             # print(''.join(subelem.itertext()))
+        #         else:
+        #             print("Coordinates present, does not have name also.")
+        #             also_has_name = False
         
-        if subject.find('cartographics', ns):
-            subelem = subject.find('cartographics', ns).find('coordinates', ns)
-            if subelem.text and trimXML(subelem.text):
-                coordinates = True
-                if subject.find('hierarchicalGeographic',ns):
-                    also_has_name = True
-                    # print(data['field_geographic_subject'][-1])
-                    # print(''.join(subelem.itertext()))
-                else:
-                    print("Coordinates present, does not have name also.")
-                    also_has_name = False
-                    
-    return {key : '|'.join(value) for key, value in data.items()}
-
 ################################### Milad note: def parseClassification(root) Removed No need for LDL  ###################################
-def parseClassification(root):
-    data = {
-        'field_lcc_classification': '',
-        'field_classification' : '',
-        'field_dewey_classification': ''
+# def parseClassification(root):
+#     data = {
+#         'field_lcc_classification': '',
+#         'field_classification' : '',
+#         'field_dewey_classification': ''
         
-    }
-    for classification in root.findall('classification',ns):
-        auth = classification.get('authority')
-        if auth == 'ddc':
-            data['field_dewey_classification'] = classification.text
-        elif auth == 'lcc':
-            data['field_lcc_classification'] = classification.text
-        else:
-            data['field_classification'] = classification.text
-            print("ELEMENT text: [{}]".format('; '.join(classification.itertext())))
-    return data
+#     }
+#     for classification in root.findall('classification',ns):
+#         auth = classification.get('authority')
+#         if auth == 'ddc':
+#             data['field_dewey_classification'] = classification.text
+#         elif auth == 'lcc':
+#             data['field_lcc_classification'] = classification.text
+#         else:
+#             data['field_classification'] = classification.text
+#             print("ELEMENT text: [{}]".format('; '.join(classification.itertext())))
+#     return data
 ####################### Milad note: Add pars location logic ########################################
 def parsLocation(root):
     data = {"field_physical_location": [],
