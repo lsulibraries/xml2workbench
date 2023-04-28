@@ -7,6 +7,7 @@ import csv
 from os import listdir, sep, path
 import re
 
+
 ns = {'':'http://www.loc.gov/mods/v3'}
 mods_to_vocab = {
     'corporate': 'corporate_body',
@@ -41,28 +42,8 @@ class XmlSet(object):
     def oversize(self, key):
         return [x[key] for x in self.docs if len(x[key]) > 255]
         
-################################### MODS SECTION PARSING ##########################################
-
-def parseTitleInfo(root):
-    titles = root.findall('titleInfo', ns)
-    data = {'title': '', 'field_alt_title': [], 'field_full_title': ''}
-    for title in titles:
-        # Titles without types are main. However they're also limited in size.
-        if 'type' not in title.attrib:
-            data['title'] = concat_title_parts(title)
-            data['field_full_title'] = data['title']
-            if len(data['title']) > 255 :
-                data['title'] = data['title'][:254]
-        elif title.get('type') == 'alternative':
-            data['field_alt_title'].append(concat_title_parts(title))
-        # For the two books with uniform titles, they're being treated as alt titles.
-        elif title.get('type') == 'uniform':
-            data['field_alt_title'].append(concat_title_parts(title))
-        else:
-            print("ERROR: title type {}".format(title.get('type')))
-    data['field_alt_title'] = '|'.join(data['field_alt_title'])
-    return data
-
+################################### MODS SECTION PARSING ###################################
+## Milad notes: changes to the way it writes text to fix the errors:
 def concat_title_parts(titleInfo):
     text = ''
     #FIXME rewrite as foreach?
@@ -71,11 +52,17 @@ def concat_title_parts(titleInfo):
         text += non_sort.text
         if non_sort.text[-1] != ' ':
             text += ' '
-    text += titleInfo.find('title', ns).text
+
+    title = titleInfo.find('title', ns)
+    if title is not None and title.text is not None:
+        text += title.text
+        text += ' : '
+               
     subtitle = titleInfo.find('subTitle', ns)
     if subtitle is not None and subtitle.text is not None:
-        text += ' : '
+        # text += ' : '
         text += subtitle.text
+
     partnumber = titleInfo.find('partNumber', ns)
     if partnumber is not None and partnumber.text is not None:
         text += '. '
@@ -86,20 +73,49 @@ def concat_title_parts(titleInfo):
         text += partname.text
     return text
 
+def parseTitleInfo(root):
+    titles = root.findall('titleInfo', ns)
+    data = {'title': '', 'field_alt_title': [], 'field_full_title': ''}
+    for title in titles:
+        # Titles without types are main. However they're also limited in size.
+        if 'type' not in title.attrib:
+            data['title'] = concat_title_parts(title).split(" : ")[0]
+            #data['title'] = concat_title_parts(title)
+            data['field_full_title'] = data['title']
+            if len(data['title']) > 255 :
+                data['title'] = data['title'][:254]
+                
+        elif title.get('type') == 'alternative':
+            data['field_alt_title'].append(concat_title_parts(title))
+
+        elif title.get('type') == 'translated':
+            data['field_alt_title'].append(concat_title_parts(title))
+            
+        elif title.get('type') == 'abbreviated':
+            data['field_alt_title'].append(concat_title_parts(title))
+            
+        elif title.get('type') == 'uniform':
+            data['field_alt_title'].append(concat_title_parts(title))
+        else:
+            print("ERROR: title type {}".format(title.get('type')))
+    data['field_alt_title'] = '|'.join(data['field_alt_title'])
+    return data
+
+#Milad Notes: Fixing name.text:
+#we do not have any functionality to get the namePart.text, roleTerm.text and role.text
 def parseNameInfo(root):
     names = root.findall('name', ns)
     name_data = []
     for name in names:
-        
         ## Get name type to determine vocab.
         vocab = 'person'
         if name.get('type') is None:
             # All ilives names have type; notify if otherwise.
             print("ERROR: no type for name {}".format(name.text))
-        # else:
-        #   nameType = name.get('type')
-        #   if nameType in mods_to_vocab.keys():
-        #     vocab = mods_to_vocab[nameType]
+        else:
+          nameType = name.get('type')
+        if nameType in mods_to_vocab.keys():
+            vocab = mods_to_vocab[nameType]
         elif name.get('type') == 'personal':
             vocab = 'person'
         elif name.get('type') == 'corporate':
@@ -164,25 +180,29 @@ def parseTypeOfResource(root):
         
 def parseGenre(root):
     xml_genres = root.findall('genre',ns)
+    print("************************************************************************************************************************* {}".format(xml_genres))
     genres = []
     for genre in xml_genres:
-        tmp = genre.text.lower()
-        genres.append(tmp)
+        if genre is not None and genre.text is not None:
+            genretxt = genre.text
+            tmp = genretxt.lower()
+            genres.append(tmp)
     return {'field_genre': '|'.join(genres)}
-    
+### Milad Notes: adding fields in Original info:
 def parseOriginInfo(root):
-    data = {'field_place_published': [],
-            'field_place_published_country':'', # assuming single valued
+    data = {'field_place_of_publication': [],
+            #'field_place_of_publication_country':'', # assuming single valued                                                                 #No need for LDL#
             'field_linked_agent': [],
             'field_edtf_date_issued': [],
             'field_edtf_date_created': [],
             'field_date_captured': [] ,
-            'field_mode_of_issuance': '',   # assuming single valued
-            'field_edition': '',            # assuming single valued
-            'field_copyright_date':'',}    # assuming single valued
+            #'field_mode_of_issuance': '',   # assuming single valued                                                                          #No need for LDL#
+            #'field_edition': '',            # assuming single valued                                                                          #No need for LDL#
+            #'field_copyright_date':''                                                                                                         #No need for LDL#
+            }    # assuming single valued
     xml_originInfo = root.findall('originInfo',ns)
     for oi in xml_originInfo:
-        if oi.get('type') is not None:
+        if oi.get('type') is None:
             # No ilives have types on originInfo.
             print("originInfo has type {}".format(oi.get('type')))
         else:
@@ -191,14 +211,14 @@ def parseOriginInfo(root):
                     handled = False
                     for place_subelem in subelem:
                         # Test for authority
-                        if place_subelem.get('authority')  in ['marccountry', 'marc']:
+                        if place_subelem.get('authority') in ['marccountry', 'marc']:
                             # This represents a "code" version of the place.
-                            data['field_place_published_country'] = place_subelem.text
+                            data['field_place_of_publication_country'] = place_subelem.text
                             handled = True
                         # Some full place elements wrongly use a <text> tag.
                         elif place_subelem.get('type') == 'text' or place_subelem.tag == '{http://www.loc.gov/mods/v3}text':
                             # this is the longer one
-                            data['field_place_published'].append(place_subelem.text)
+                            data['field_place_of_publication'].append(place_subelem.text)
                             handled = True
                     if not handled:
                         # All islandlives place are either marc auth or type text.
@@ -215,7 +235,7 @@ def parseOriginInfo(root):
                     data['field_edtf_date_created'].append(subelem.text)
                 elif subelem.tag == '{http://www.loc.gov/mods/v3}dateCaptured':
                     data['field_date_captured'].append(subelem.text)
-                elif subelem.tag == '{http://www.loc.gov/mods/v3}copyrightDate':
+                elif subelem.tag == '{http://www.loc.gov/mods/v3}copyrightDate':                                                               #No need for LDL#
                     data['field_copyright_date'] = subelem.text
                 elif subelem.tag == '{http://www.loc.gov/mods/v3}issuance':
                     data['field_mode_of_issuance'] = subelem.text
@@ -237,11 +257,11 @@ def parseOriginInfo(root):
             if data['field_copyright_date']:
                 print("MULTIPLE COPYRIGHT DATES: {},{}".format(data['field_copyright_date'],issuedDate))
             else:
-                data['field_copyright_date'] = issuedDate.replace('c','')
+                data['field_copyright_date'] = issuedDate.replace('c','')                                                                      #No need for LDL#
                 data['field_edtf_date_issued'].remove(issuedDate)
     
     # Collapse multi-valued fields
-    data['field_place_published'] = '|'.join(data['field_place_published'])
+    data['field_place_of_publication'] = '|'.join(data['field_place_of_publication'])
     data['field_linked_agent'] = '|'.join(data['field_linked_agent'])
     data['field_edtf_date_issued'] = '|'.join(data['field_edtf_date_issued'])
     data['field_edtf_date_created'] = '|'.join(data['field_edtf_date_created'])
@@ -264,33 +284,54 @@ def parseLanguage(root):
                 print("unhandled tag: {}, text: {}, attrib: {}".format(lang_term.tag, lang_term.text, lang_term.attrib))
     return {key: '|'.join(value) for key, value in data.items()}
 
+
+############## Milad Note: note,internetMediaType,digitalOrigin data added ##############
 def parsePhysicalDescription(root):
     data = {
         'field_physical_form' : '',
-        'field_extent' : ''
+        'field_extent' : '',
+        'field_physical_description_note': '', 
+        'Field_internet_Media_Type': '',
+        'digital_Origin': ''
     }
     xml_physDesc = root.findall('physicalDescription',ns)
     for pd in xml_physDesc:
         for elem in pd:
-            if elem.tag == '{http://www.loc.gov/mods/v3}form':
-                data['field_physical_form'] = elem.text
-            elif elem.tag == '{http://www.loc.gov/mods/v3}extent':
+            if elem.tag == 'note':
+                data['field_physical_description_note'] = elem.text
+            elif elem.tag == 'extent':
                 data['field_extent'] = elem.text
+            elif elem.tag == 'internetMediaType':
+                data['Field_internet_Media_Type'] = elem.text
+            elif elem.tag == 'digitalOrigin':
+                data['digital_Origin'] = elem.text
+            elif elem.tag == 'form':
+                data['field_physical_form'] = elem.text
             else:
                 print("Unhandled element: tag: [{}], text: [{}], attrib: {}".format(elem.tag, elem.text, elem.attrib))
     return data
-
+### Milad Note: separated the abstracts into two fields according to the child tag's attribute
 def parseAbstract(root):
-    data = []
+    data = {
+        'field_harmful_content_notice': [],
+        'field_abstract_description': []
+        # 'abstract': [] #In case if we needed to add all the abstact texts into one field
+    }
     xml_abstract = root.findall('abstract',ns)
     for abstract in xml_abstract:
         if abstract.text is not None:
-            if abstract.get('type') is not None:
-                data.append(': '.join([abstract.get('type'), abstract.text]))
-                print("abstract type: [{}]".format(abstract.get('type')))
-            else:
-                data.append(abstract.text)
-    return {'field_abstract': '|'.join(data) }
+            if abstract.get('displayLabel') == 'Harmful Content Notice':
+                data['field_harmful_content_notice'].append(abstract.text)
+            if abstract.get('displayLabel') == 'Description':
+                data['field_abstract_description'].append(abstract.text)
+            # if abstract.get('type') is not None:
+            #     data['abstract'].append(': '.join([abstract.get('type'), abstract.text]))
+            #     print("abstract type: [{}]".format(abstract.get('type')))
+
+            # else:
+            #     data['abstract'].append(abstract.text)
+    # return {'field_abstract': '|'.join(data) }
+    return {key : '|'.join(value) for key, value in data.items()}
 
 def parseTableOfContents(root):
     data = []
@@ -308,16 +349,33 @@ def parseTargetAudience(root):
             print("FOUND: TARGET AUDIENCE {}".format(ta.text))
 
 def parseNote(root):
-    data = []
+    data = {
+        'field_note' : [],
+        'field_source_note': [],
+        'field_preferred_citation' : [],
+        'field_harmful_content_notice': [],
+        'fieldNoteNew': []
+    }
+        
     xml_note = root.findall('note',ns)
     for note in xml_note:
-        if note.text is not None:
-            if note.get('type') is not None:
-                data.append(': '.join([note.get('type'), note.text]))
-                #print("note type: [{}]".format(note.get('type')))
+        if note.text is not None:  
+            if note.get('type') == 'ownership':
+                data['field_source_note'].append(note.text)
+            elif note.get('type') == 'preferred citation':
+                data['field_preferred_citation'].append(note.text)
+            if note.get('type') == 'content':
+                if note.get('displayLabel') == 'Harmful Content Notice':
+                    data['field_harmful_content_notice'].append(note.text)
+                if note.get('displayLabel') == 'Note':
+                    data['fieldNoteNew'].append(note.text)
+            # elif note.text is not None:
             else:
-                data.append(note.text)
-    return {'field_note': '|'.join(data) }
+                # data['field_note'] == ': '.join([note.get('type'), note.text, '|'])
+                data['field_note'].append('{}:{}'.format(note.get('type'), note.text))
+
+        # return {'field_note': '|'.join(data) }
+    return {key : '|'.join(value) for key, value in data.items()}
 
 def trimXML(text):
     if text is None:
@@ -330,90 +388,124 @@ def trimXMLlist(list):
 def parseSubject(root):
     data = {
         'field_subject': [],
-        # 'field_subject_general': [],
-        'field_subjects_name': [],
-        # 'field_temporal_subject': [],
-        'field_geographic_subject': []
+        'field_geographic_subject': [],
+        'field_subjects_name': []
     }
     for subject in root.findall('subject',ns):
-        if subject.get('authority') == 'lcsh': # Then create a string out of this subject
-            components = []
-            type = subject[0].tag
-            for elem in subject:
-                elem.text = trimXML(elem.text)
-                if elem.text:
-                    components.append(elem.text)
-                elif elem.tag == '{http://www.loc.gov/mods/v3}name':
-                    nameValue = ' '.join([subelem.text for subelem in elem])
-                    components.append(nameValue)
-                        
-            subject_string = ' -- '.join(components)
-            if type == '{http://www.loc.gov/mods/v3}geographic':
-                data['field_geographic_subject'].append(subject_string)
-                # print('subject string: [{}]'.format(subject_string))
-            elif type == '{http://www.loc.gov/mods/v3}topic':
-                data['field_subject'].append('subject:' + subject_string)
-            elif type == '{http://www.loc.gov/mods/v3}name':
-                nametype = mods_to_vocab[subject[0].get('type')]
-                data['field_subjects_name'].append(nametype + ':' + subject_string)
-            else:
-                print("Unhandled subject string of type: {}".format(type))
+        #####Milad Note: Changed the logic to write text in 'topic' like topic1.text--topc2.text (see the return at the end of this function)
+        if subject.get('authority') == 'LCSH': # Then create a string out of this subject
+            for sub in subject.iter():
+                if 'topic' in sub.tag and sub.text is not None:
+                    data['field_subject'].append(sub.text)
+                
+        ##### Milad Note: change the way and logic that data written to field_subjects_name 
+        if subject.get('displayLabel') == 'Name Subject':
+            for elems in subject.iter(): #use iter to output the certain tag or attrib
+                if 'name' in elems.tag:
+                    if 'namePart' in elems.tag:
+                        data['field_subjects_name'].append(elems.text)
+                            
+        for locIter in subject.iter(): #Milad note: text in <subject><geographic> should go here, regardless of @displayLabel--so @displayLabel can be disregarded 
+            if 'geographic' in locIter.tag:
+                data['field_geographic_subject'].append(locIter.text)
+    for key, value in data.items():
+        if key != "field_subject":
+            return {key : '|'.join(value)}
+        else: 
+            return {key : '--'.join(value)}
 
-        hg = subject.find('hierarchicalGeographic',ns)
-        if hg:
-            data['field_geographic_subject'].append(' -- '.join([trimXML(x) for x in hg.itertext() if trimXML(x) != '']))
-        
-        if subject.find('cartographics', ns):
-            subelem = subject.find('cartographics', ns).find('coordinates', ns)
-            if subelem.text and trimXML(subelem.text):
-                coordinates = True
-                if subject.find('hierarchicalGeographic',ns):
-                    also_has_name = True
-                    # print(data['field_geographic_subject'][-1])
-                    # print(''.join(subelem.itertext()))
-                else:
-                    print("Coordinates present, does not have name also.")
-                    also_has_name = False
-                    
+def parsLocation(root):
+    data = {"field_physical_location": [],
+            "field_institution_web_site": [], 
+            "field_oclc_symbol": [],
+            "field_sublocation": [],
+            "field_shelf_location": []
+            }
+    for location in root.findall('location', ns):
+        print("Location ---------------------***********************")
+        for locs in location.iter():
+            if 'physicalLocation' in locs.tag :
+                if locs.get("displayLabel") == "Physical Location":
+                    data["field_physical_location"].append(locs.text) 
+                if locs.get("displayLabel") == "OCLC Member Symbol":
+                    data["field_institution_web_site"].append(locs.text)
+            if 'subLocation' in locs.tag:
+                data["field_sublocation"].append(locs.text)
+            if 'shelfLocator' in locs.tag:
+                data["field_shelf_location"].append(locs.text)
+    
+    print('test Texts')
+    print("field physical location: {}".format(data["field_physical_location"]))
+    print("field institution web site: {}".format(data["field_institution_web_site"]))
+    print("field sublocation: {}".format(data["field_sublocation"]))
+    print("field shelf location: {}".format(data["field_shelf_location"]))
+    
     return {key : '|'.join(value) for key, value in data.items()}
 
-def parseClassification(root):
-    data = {
-        'field_lcc_classification': '',
-        'field_classification' : '',
-        'field_dewey_classification': ''
-        
-    }
-    for classification in root.findall('classification',ns):
-        auth = classification.get('authority')
-        if auth == 'ddc':
-            data['field_dewey_classification'] = classification.text
-        elif auth == 'lcc':
-            data['field_lcc_classification'] = classification.text
-        else:
-            data['field_classification'] = classification.text
-            print("ELEMENT text: [{}]".format('; '.join(classification.itertext())))
-    return data
 
 def parseRelatedItem(root):
     data = {
-        'field_is_succeeded_by': [], # TODO Make fields
-        'field_is_preceded_by': [],  # TODO Make fields
-        'field_note' : []
+        #Milad note: field_is_succeeded_by,field_is_preceded_by are not needed to be parsed
+        #'field_is_succeeded_by': [],
+        #'field_is_preceded_by': [],
+        'field_note' : [],
+        'field_digital_collection': [],
+        'field_digital_collection_url': [],
+        'field_repository_collection': [],
+        'field_repository_collection_guide': [],
+        'field_parent_Item_Title': []
     }
+
     for relatedItem in root.findall('relatedItem',ns):
         if relatedItem.get('type') == "original":
             # From a glance, these are all in note fields
             continue
-        # Preceding and succeeding get their own fields
+        # Milad note: Preceding and succeeding are not needed in LDL, Fileds are commented out
         elif relatedItem.get('type') == "preceding":
             data['field_is_preceded_by'].append(' '.join(trimXMLlist(relatedItem.itertext())))
         elif relatedItem.get('type') == 'succeeding':
             data['field_is_succeeded_by'].append(' '.join(trimXMLlist(relatedItem.itertext())))
-        #
-        elif relatedItem.get('type') in ['series', 'host'] :
+        elif relatedItem.get('type') == 'series':
             # Add a note
             data['field_note'].append(relatedItem.get('type') + ': ' + ' '.join(trimXMLlist(relatedItem.itertext())))
+            
+    ######## Milad note: New logics to add a few fields by parsing into tags, child tags, get the text eccouridng to the tag's attribute ########
+        elif relatedItem.get('type') == 'host':
+            print("**************************************** Adding relatedItem tags with host attribute *****************************************************")
+            for elems in relatedItem.iter():
+                if "titleInfo" in elems.tag:
+                    if elems.get('displayLabel') == 'Parent Item Title':
+                        for elem in elems:
+                            data['field_parent_Item_Title'].append(elem.text)
+                            
+                    if elems.get('displayLabel') == 'Digital Collection':
+                        for elem in elems:
+                            data['field_digital_collection'].append(elem.text)
+
+                    if elems.get('displayLabel') == 'Repository Collection':
+                        for elem in elems:
+                            data['field_repository_collection'].append(elem.text)
+                            
+                if "location" in elems.tag:
+                    for elem in elems:
+                        if elem.get('displayLabel') == 'Relation':
+                                data['field_digital_collection_url'].append(elem.text)
+                                
+                        if elem.get('displayLabel') == 'Repository Collection Guide':
+                            for elem in elems:
+                                data['field_repository_collection_guide'].append(elem.text)
+                                
+            print("New Fields:***") 
+            print("field digital collection: {}".format(data["field_digital_collection"]))
+            print("MyField parent item title: {}".format(data["field_parent_Item_Title"]))
+            print("field repository collection: {}".format(data["field_repository_collection"]))
+            print("field digital collection URL: {}".format(data["field_digital_collection_url"]))
+            print("field repository collection guide: {}".format(data["field_repository_collection_guide"]))
+
+        elif relatedItem.get('type') == 'series' :
+            # Add a note
+            data['field_note'].append(relatedItem.get('type') + ': ' + ' '.join(trimXMLlist(relatedItem.itertext())))
+                
         elif relatedItem.get('type') in ['otherVersion', 'constituent'] :
             # Only instance was a self-reference. ignore.
             continue
@@ -428,9 +520,10 @@ def parseRelatedItem(root):
 def parseIdentifier(root):
     data = {
         'field_identifier': [],
-        'field_local_identifier' : [],
-        'field_isbn': [],
-        'field_oclc_number': []
+        'field_local_identifier' : []
+        #Milad note: field_isbn,field_oclc_number are not needed to be parsed
+        #'field_isbn': [],           
+        #'field_oclc_number': [] 
     }
     for identifier in root.findall('identifier',ns):
         id_type = identifier.get('type')
@@ -441,8 +534,8 @@ def parseIdentifier(root):
         elif id_type == 'uri':
             # Decision to filter these out as they are broken links
             continue
-        if id_type == 'isbn':
-            data['field_isbn'].append(identifier.text)
+        # if id_type == 'isbn':
+        #     data['field_isbn'].append(identifier.text)
         elif id_type == 'oclc':
             data['field_oclc_number'].append(identifier.text)
         elif id_type == 'local':
@@ -452,33 +545,69 @@ def parseIdentifier(root):
             data['field_identifier'].append(identifier.text)
     return {key : '|'.join(value) for key, value in data.items()}
 
+#### Milad note: 5 fields added insteaed of field_rights____ Codes for field rights commented out ####
 def parseAccessCondition(root):
     data = {
-        'field_rights': []
+        # 'field_rights': [],
+        'field_rights_statement': [],
+        'field_rights_information': [],
+        'field_access_restrictions': [],
+        'field_contact_information': [],
+        'field_rights_statement_uri': []
     }
     for accessCondition in root.findall('accessCondition',ns):
+        attributes = accessCondition.attrib
+        print("This is accessCondition Attributes .... {}".format(attributes))
+        
         id_type = accessCondition.get('type')
-        id_value = trimXML(accessCondition.text)
-        if id_value is None or id_value == '':
-            # There is no value here to process.
-            continue
-        if id_type:
-            data['field_rights'].append(id_type + ': ' + id_value)
-        else:
-            data['field_rights'].append(id_value)
+        disp_label = accessCondition.get('displayLabel')
+        
+        # add field_rights_statement
+        if id_type == "use and reproduction" and disp_label == "Rights Statement": 
+            data["field_rights_statement"].append(accessCondition.text)
+            
+        # add field_rights_statement_uri: xlink:href is not a attribute
+        #A) use the right attribute name by using root.get('attributeName')
+        if disp_label == "xlink:href": 
+            data["field_rights_statement_uri"].append(accessCondition.get('xlink:href'))
+        #B) use attribute name by getting root.attrib in a dictionary, Output be like: {'type': 'use and reproduction', 'displayLabel': 'Rights Information'} 
+        if attributes.keys() == 'xlink:href':
+            data["field_rights_statement_uri"].append(attributes.values())
+            
+        # add field_rights_information
+        if id_type == "use and reproduction" and disp_label == "Rights Information": 
+            data["field_rights_information"].append(accessCondition.text)
+        
+        # add field_contact_information
+        if id_type == "use and reproduction" and disp_label == "Contact Information": 
+            data["field_contact_information"].append(accessCondition.text)
+        
+        # add field_access_restrictions
+        if id_type == "use and reproduction" and disp_label == "Restrictions on Access": 
+            data["field_access_restrictions"].append(accessCondition.text)
+
     return {key : '|'.join(value) for key, value in data.items()}
 
+#### Milad Notes: Added Pars part ####
 def parsePart(root):
-    data = {}
+    data = {
+        'field_caption' : [],
+        'field_number' : [],
+        'field_title' : [],
+    }
     for part in root.findall('part',ns):
-        print("PART FOUND: [{}]".format(','.join(part.itertext())))
-    return data
+        for prt in part.iter():
+            if 'caption' in prt.tag :
+                data['field_caption'].append(prt.text)
+                
+            if 'number' in prt.tag :
+                data['field_number'].append(prt.text)
+                
+            if 'title' in prt.tag:
+                data['field_title'].append(prt.text)
+    return {key : '|'.join(value) for key, value in data.items()}
 
-def parseExtension(root):
-    data = {}
-    for part in root.findall('extension',ns):
-        print("EXT FOUND: [{}]".format(','.join(part.itertext())))
-    return data
+
 
 ################################### FILE HANDLING ##########################################
 
@@ -499,9 +628,9 @@ def parse_mods(filename):
     xml_data.update(parseTypeOfResource(root))
     # Parse genre
     xml_data.update(parseGenre(root))
-    # Parse originInfo
+    #Parse originInfo
     oiData = parseOriginInfo(root)
-    # Combine publisher with rest of names
+    #Combine publisher with rest of names
     if oiData['field_linked_agent']:
         if xml_data['field_linked_agent']:
             oiData['field_linked_agent'] = '|'.join([xml_data['field_linked_agent'],oiData['field_linked_agent']])
@@ -521,8 +650,8 @@ def parse_mods(filename):
     xml_data.update(parseNote(root))
     # Parse subjects
     xml_data.update(parseSubject(root))
-    # Parse classification
-    xml_data.update(parseClassification(root))
+    #Milad note: Ignore Parse classification
+    #xml_data.update(parseClassification(root))
     # Parse relatedItem
     relData = parseRelatedItem(root)
     # Append alterations to MODS note properly:
@@ -534,26 +663,25 @@ def parse_mods(filename):
     xml_data.update(relData)
     # Parse identifier data
     xml_data.update(parseIdentifier(root))
-    # Skip Location; no mapping.
+    # Parse Location
+    xml_data.update(parsLocation(root))
     # Parse AccessCondition
     xml_data.update(parseAccessCondition(root))
-    # Look for values in part - none found.
-    partData = parsePart(root)
+    #Parse Part
+    xml_data.update(parsePart(root))
     # Look for values in Extension
-    extData = parseExtension(root)
-    # Ignore recordInfo data - no mapping.
+    # extData = parseExtension(root) #### Milad Notes:no parseExtension ####
+    #Milad Note: no mapping for recordInfo data 
     return xml_data
     
 def main():
     data = XmlSet()
-    directory = '/Users/rlefaive/Documents/Projects/2020-ilives-metadata/ilives_mods'
+    directory = 'Data'
     data.input_directory(directory)
     #FIXME OUTPUT SHORTCUT
     #print("large titles {}".format('.'.join(data.oversize('title'))))
     # print("length alt title: {}".format(data.maxlen('field_alt_title')))
-    output_filename = 'output.csv'
-    with open(output_filename, 'w') as csv:
+    output_filename = 'Test.csv'
+    with open(output_filename, 'w', encoding="utf-8") as csv:
         data.print(csv)
-    
-if __name__ == '__main__':
-    main()
+main()
